@@ -1,0 +1,19 @@
+[project]
+name = "relay-content-worker"
+version = "1.0.0"
+description = "Durable four-agent editorial workflow for Relay Studio"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "crewai>=1.0,<2",
+  "supabase>=2.20,<3",
+  "pydantic>=2.11,<3",
+  "python-dotenv>=1.1,<2",
+  "pypdf>=6.0,<7",
+  "python-docx>=1.2,<2",
+  "openai>=2.0,<3",
+]
+[dependency-groups]
+dev = ["pytest>=8.4,<10", "reportlab>=4.4,<5"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
