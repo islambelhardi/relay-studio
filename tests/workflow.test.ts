@@ -13,6 +13,12 @@ describe('demo lifecycle and metrics', () => {
   it('keeps source anchors usable in exported articles without including the private PRD', () => { const run = makeDemo('success'); const article = run.artifacts.find(a => a.id === run.finalArtifactId)!; const result = exportMarkdown(article,run.sources); expect(result).toContain('### Source prd'); expect(result).toContain('### Source s1'); expect(result).not.toContain('### Source s2'); expect(result).not.toContain(run.sources[0].excerpt); });
 });
 describe('input contracts', () => {
+  it('accepts both providers, defaults legacy requests to OpenAI, and rejects other providers', () => {
+    const input = {documentId:crypto.randomUUID(),title:'Article',brief:{audience:'Teams',tone:'Professional',targetWords:1000}};
+    expect(runSchema.parse(input).provider).toBe('openai');
+    expect(runSchema.parse({...input,provider:'gemini'}).provider).toBe('gemini');
+    expect(runSchema.safeParse({...input,provider:'unknown'}).success).toBe(false);
+  });
   it('rejects invalid lengths and excessive word targets', () => { expect(briefSchema.safeParse({audience:'',tone:'Professional',targetWords:1000}).success).toBe(false); expect(briefSchema.safeParse({audience:'Teams',tone:'Professional',targetWords:3001}).success).toBe(false); });
   it('requires an owned document identifier before live run creation', () => { expect(runSchema.safeParse({documentId:'../other-user',title:'Test',brief:{audience:'Teams',tone:'Professional',targetWords:1000}}).success).toBe(false); });
 });

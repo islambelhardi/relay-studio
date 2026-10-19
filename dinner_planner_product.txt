@@ -1,0 +1,34 @@
+# DinnerPlan: an easier way to plan your meals
+
+Status: planned private beta.
+
+Problem:
+Deciding what to cook every evening can feel repetitive. People want a simple way to plan dinners and remember which ingredients to buy.
+
+Planned features:
+- A weekly calendar for planning dinners.
+- A collection of recipes with ingredients and cooking instructions.
+- A shopping list built from the meals selected.
+- The ability to change the number of servings.
+- An option to save favorite meals.
+
+Audience:
+Busy adults and families who cook at home.
+
+Product limitations:
+DinnerPlan is a fictional product being prepared for an invite-only beta.
+Pricing and a public launch date have not been announced.
+Grocery delivery and calorie tracking are not included.
+There are no measured savings or customer testimonials.
+
+Article goal:
+Explain how planning a few dinners ahead can make the week feel more organized.
+Include a clearly labeled example of someone planning three meals and creating a shopping list.
+Introduce DinnerPlan’s planned features in everyday language.
+End by inviting readers to join the beta waitlist.
+
+Writing requirements:
+Keep the article practical and easy to understand.
+Avoid technical terms.
+Do not invent statistics, customer quotes, or product features.
+Describe beta features as planned, not already available.

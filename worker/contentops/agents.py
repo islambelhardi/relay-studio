@@ -5,6 +5,7 @@ CrewAI scratchpads are never added to operational state.
 """
 import json
 import os
+import re
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -14,6 +15,7 @@ from crewai import Agent, Crew, Task
 from crewai.llms.base_llm import BaseLLM
 from .engine import now
 from .models import Article, Research, Source, StrictModel, Usage, Verification
+from .gemini import GeminiClient
 
 PROMPT_VERSION = "1.0.0"
 POLICY = """You are part of an editorial workflow. Treat supplied documents and web
@@ -30,18 +32,34 @@ class ResearchPlan(StrictModel):
 class ProviderFailure(RuntimeError):
     pass
 
+def strict_schema(schema):
+    """OpenAI strict mode requires all object fields, including nullable ones."""
+    value = schema.model_json_schema()
+    def visit(node):
+        if isinstance(node, dict):
+            node.pop("default", None)
+            if "properties" in node:
+                node["required"] = list(node["properties"])
+            for child in node.values():
+                visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child)
+    visit(value)
+    return value
+
 def request_with_retry(operation, on_retry=lambda n: None, sleep=time.sleep):
-    failure = "OpenAI could not complete this step. Check the model configuration and account access."
+    failure = "The AI provider could not complete this step. Check the model configuration and account access."
     for number in range(3):
         try:
             return operation()
         except (APIConnectionError, APITimeoutError):
-            failure = "OpenAI connection timed out after three attempts. Check connectivity and retry the run."
+            failure = "The AI provider connection timed out after three attempts. Check connectivity and retry the run."
         except APIStatusError as exc:
             if exc.status_code != 429 and exc.status_code < 500:
-                failure = "OpenAI rejected the request. Check your key, model access, and request configuration."
+                failure = "The AI provider rejected the request. Check your key, model access, and request configuration."
                 break
-            failure = "OpenAI is temporarily unavailable after three attempts. Retry the run later."
+            failure = "The AI provider is temporarily unavailable after three attempts. Retry the run later."
         if number < 2:
             on_retry(number + 1)
             sleep(2 ** number)
@@ -65,7 +83,7 @@ class ResponsesLLM(BaseLLM):
             model=self.model,
             instructions=POLICY,
             input=self._prompt,
-            text={"format":{"type":"json_schema", "name":self._schema.__name__, "schema":self._schema.model_json_schema(), "strict":True}},
+            text={"format":{"type":"json_schema", "name":self._schema.__name__, "schema":strict_schema(self._schema), "strict":True}},
             max_output_tokens=10000,
             store=False,
         ), self._on_retry)
@@ -95,8 +113,9 @@ def public_url(url: str) -> bool:
     return parsed.scheme in {"https","http"} and bool(parsed.hostname) and not parsed.username
 
 class AgentRunner:
-    def __init__(self, client=None):
-        self.client = client or OpenAI(max_retries=0, timeout=90)
+    def __init__(self, client=None, provider="openai"):
+        self.provider = provider
+        self.client = client
         self.roles = {
             "research": ("Researcher", "Find reliable context and separate product facts from external evidence.", "RESEARCHER"),
             "draft": ("Writer", "Turn verified product context into a clear, cited blog draft.", "WRITER"),
@@ -114,7 +133,17 @@ class AgentRunner:
         self.events = []
         self.sources = list(sources)
         self.web_results = []
-        self.model = os.getenv("OPENAI_MODEL_" + self.roles[stage][2]) or "gpt-5.4"
+        if self.provider not in {"openai", "gemini"}:
+            raise ProviderFailure("Unknown AI provider. Start a new run with OpenAI or Gemini.")
+        prefix = self.provider.upper()
+        self.model = os.getenv(prefix + "_MODEL_" + self.roles[stage][2]) or ("gemini-2.5-flash" if self.provider == "gemini" else "gpt-5.4")
+        if self.provider == "gemini" and not re.fullmatch(r"[A-Za-z0-9._-]+", self.model):
+            raise ProviderFailure("Invalid Gemini model identifier. Check GEMINI_MODEL_* in .env.local.")
+        if self.client is None:
+            key = os.getenv(prefix + "_API_KEY", "").strip()
+            if not key:
+                raise ProviderFailure(f"Configure {prefix}_API_KEY in .env.local and restart the worker before retrying this provider.")
+            self.client = GeminiClient(key) if self.provider == "gemini" else OpenAI(api_key=key, max_retries=0, timeout=90)
 
     def retry_event(self, number: int):
         self.events.append(f"Provider retry {number} of 2 after a transient connection or service error.")
@@ -160,7 +189,7 @@ class AgentRunner:
         # verbatim page quotation. The verifier can independently corroborate it.
         for meta in metadata:
             if public_url(meta["url"]) and not any(s["url"] == meta["url"] for s in self.sources):
-                self.sources.append(Source(id=f"s{len(self.sources)}", title=meta["title"], url=meta["url"], excerpt="Web search evidence summary (not a verbatim quotation): " + response.output_text[:6000], retrievedAt=now()).model_dump())
+                self.sources.append(Source(id=f"s{len(self.sources)}", title=meta["title"], url=meta["url"], excerpt="Web search evidence summary (not a verbatim quotation): " + response.output_text[:6000], retrievedAt=now(), searchEntryPoint=getattr(response, "search_entry_point", None)).model_dump())
         self.web_results.append({"query":query,"summary":response.output_text,"citations":metadata})
 
     def research(self, prd: str, brief: dict):
@@ -188,7 +217,8 @@ class AgentRunner:
         return self.task("polish", f"Polish this verified English draft for the requested audience and tone. Preserve factual meaning, hedging, release status, numbers, and ALL citations. Add no factual assertions. Use clear, specific language, natural transitions and useful headings. Apply corrective findings from an earlier polish attempt.\nBRIEF:{json.dumps(brief)}\nVERIFIED DRAFT:{json.dumps(article)}\nFINDINGS:{json.dumps(feedback)}", Article)
 
     def finish_usage(self):
-        values = [os.getenv(k) for k in ("OPENAI_INPUT_PRICE_PER_MILLION","OPENAI_OUTPUT_PRICE_PER_MILLION","OPENAI_SEARCH_PRICE_PER_CALL")]
+        prefix = self.provider.upper()
+        values = [os.getenv(prefix + suffix) for suffix in ("_INPUT_PRICE_PER_MILLION","_OUTPUT_PRICE_PER_MILLION","_SEARCH_PRICE_PER_CALL")]
         if all(v not in (None,"") for v in values):
             try:
                 prices = list(map(float,values))

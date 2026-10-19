@@ -1,15 +1,17 @@
 export type Stage = 'prd' | 'research' | 'draft' | 'verify' | 'polish';
 export type RunStatus = 'queued' | 'running' | 'completed' | 'needs_review' | 'failed';
 export type Scenario = 'success' | 'revision' | 'exhausted';
+export type Provider = 'openai' | 'gemini';
+export const providerLabels: Record<Provider, string> = { openai: 'OpenAI', gemini: 'Gemini' };
 export interface Brief { audience: string; tone: string; targetWords: number }
-export interface Source { id: string; title: string; url: string; excerpt: string; retrievedAt: string }
+export interface Source { id: string; title: string; url: string; excerpt: string; retrievedAt: string; searchEntryPoint?: string | null }
 export interface Claim { text: string; sourceIds: string[]; verdict: 'supported' | 'contradicted' | 'insufficient_evidence'; explanation: string }
 export interface Scores { accuracy: number; coverage: number; fidelity: number }
 export interface Report { scores: Scores; claims: Claim[]; feedback: string[]; passed: boolean }
 export interface Artifact { id: string; stage: Stage; version: number; markdown: string; title: string; createdAt: string; report?: Report; sources?: Source[]; approved?: boolean; inputArtifactId?: string }
 export interface Attempt { id: string; stage: Stage; artifactId?: string; status: 'passed' | 'rejected' | 'error'; durationMs: number; inputTokens: number; outputTokens: number; searchCalls: number; costUsd: number | null; model: string; promptVersion: string; createdAt: string; error?: string }
 export interface RunEvent { id: string; stage: Stage; kind: 'started' | 'completed' | 'rollback' | 'error'; message: string; createdAt: string }
-export interface Run { id: string; documentId?: string; title: string; status: RunStatus; createdAt: string; updatedAt: string; brief: Brief; artifacts: Artifact[]; attempts: Attempt[]; events: RunEvent[]; sources: Source[]; finalArtifactId: string | null; approvedDraftId: string | null; currentStage: Stage; phase?: string; draftRevision?: number; polishRevision?: number; error?: string; simulated: boolean }
+export interface Run { provider?: Provider; id: string; documentId?: string; title: string; status: RunStatus; createdAt: string; updatedAt: string; brief: Brief; artifacts: Artifact[]; attempts: Attempt[]; events: RunEvent[]; sources: Source[]; finalArtifactId: string | null; approvedDraftId: string | null; currentStage: Stage; phase?: string; draftRevision?: number; polishRevision?: number; error?: string; simulated: boolean }
 export const stages: { id: Stage; label: string; agent: string; description: string }[] = [
   { id: 'prd', label: 'Product brief', agent: 'Your starting point', description: 'Requirements & context' },
   { id: 'research', label: 'Research', agent: 'Researcher', description: 'Sources & product facts' },

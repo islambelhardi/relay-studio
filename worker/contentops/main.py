@@ -17,7 +17,9 @@ from supabase import create_client
 from .engine import TERMINAL
 
 def require_environment():
-    missing = [k for k in ("NEXT_PUBLIC_SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY") if not os.getenv(k)]
+    missing = [k for k in ("NEXT_PUBLIC_SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY") if not os.getenv(k)]
+    if not any(os.getenv(k, "").strip() for k in ("OPENAI_API_KEY", "GEMINI_API_KEY")):
+        missing.append("OPENAI_API_KEY or GEMINI_API_KEY")
     if missing:
         print("Live worker is not configured. Add these names to .env.local: " + ", ".join(missing),flush=True)
         return False

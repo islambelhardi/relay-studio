@@ -65,6 +65,14 @@ def db_stub():
     db.storage.from_.return_value.download.return_value = b"# PRD\nBeta is planned."
     return db
 
+@pytest.mark.parametrize("provider", ["gemini", "openai", None])
+def test_checkpoint_restoration_selects_saved_provider(provider):
+    state = initial_state()
+    if provider:
+        state["provider"] = provider
+    flow = ContentFlow(db_stub(), MemoryStore(state), state)
+    assert flow.runner.provider == (provider or "openai")
+
 @pytest.mark.parametrize("draft_failures,polish_failures,status",[(0,0,"completed"),(1,0,"completed"),(3,0,"needs_review"),(0,1,"completed"),(0,2,"needs_review")])
 def test_full_flow_routes_and_commits(draft_failures,polish_failures,status):
     state = initial_state()

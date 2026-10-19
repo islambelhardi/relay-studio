@@ -10,6 +10,7 @@ class Source(StrictModel):
     url: str
     excerpt: str
     retrievedAt: str
+    searchEntryPoint: str | None = None
 
 class Research(StrictModel):
     markdown: str = Field(min_length=1)

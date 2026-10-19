@@ -35,6 +35,7 @@ beforeAll(async () => {
   `);
   const migration = readFileSync(new URL('../supabase/migrations/001_contentops.sql',import.meta.url),'utf8').replace('create extension if not exists pgmq;','');
   await db.exec(migration);
+  await db.exec(readFileSync(new URL('../supabase/migrations/002_ai_providers.sql',import.meta.url),'utf8'));
   await db.query('insert into auth.users(id) values ($1),($2)',[alice,bob]);
   await asUser(alice);
   await db.query("insert into documents(id,owner_id,title,filename,storage_path,extension,byte_size) values($1,$2,'PRD','prd.md',$3,'md',10)",[doc,alice,`${alice}/prd.md`]);
@@ -45,7 +46,14 @@ beforeAll(async () => {
 afterEach(async () => { await db.exec('reset role'); });
 afterAll(async () => { await db?.close(); });
 describe('database isolation and durable commits', () => {
-  it('creates the run and queued job atomically', async () => { const q = await db.query<{n:number}>('select count(*)::int as n from pgmq.test_queue'); expect(q.rows[0].n).toBe(1); expect(initial.status).toBe('queued'); });
+  it('creates the run and queued job atomically', async () => { const q = await db.query<{n:number}>('select count(*)::int as n from pgmq.test_queue'); expect(q.rows[0].n).toBe(1); expect(initial.status).toBe('queued'); expect(initial.provider).toBe('openai'); });
+  it('saves the provider and rejects unknown providers at the RPC boundary', async () => {
+    await asUser(alice);
+    const result = await db.query<{state:Record<string,unknown>}>("select create_content_run($1,'Gemini article',$2::jsonb,'gemini') as state",[doc,JSON.stringify(brief)]);
+    expect(result.rows[0].state.provider).toBe('gemini');
+    await expect(db.query("select create_content_run($1,'Bad provider',$2::jsonb,'unknown')",[doc,JSON.stringify(brief)])).rejects.toThrow('Invalid provider');
+    await expect(db.query("select create_content_run($1,'Null provider',$2::jsonb,null)",[doc,JSON.stringify(brief)])).rejects.toThrow('Invalid provider');
+  });
   it('hides documents and runs from another account', async () => { await asUser(bob); expect((await db.query('select * from documents')).rows).toHaveLength(0); expect((await db.query('select * from runs')).rows).toHaveLength(0); await expect(db.query("select create_content_run($1,'Stolen',$2::jsonb)",[doc,JSON.stringify(brief)])).rejects.toThrow('Document not found'); });
   it('validates briefs even when calling the database RPC directly', async () => { await asUser(alice); await expect(db.query("select create_content_run($1,'Missing brief','{}'::jsonb)",[doc])).rejects.toThrow('Invalid brief'); });
   it('prevents users from changing artifacts or accessing worker RPCs', async () => { await asUser(alice); await expect(db.query('update runs set revision=10 where id=$1',[rid])).rejects.toThrow('permission denied'); await expect(db.query('select read_content_job()')).rejects.toThrow('permission denied'); await expect(db.query("insert into documents(owner_id,title,filename,storage_path,extension,byte_size) values($1,'x','x','stolen','md',1)",[bob])).rejects.toThrow('row-level security'); });

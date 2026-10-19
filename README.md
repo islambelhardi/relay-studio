@@ -1,6 +1,6 @@
 # Relay Studio
 
-A local content operations workbench: **PRD → researcher → writer → fact-checker → style polisher**. Built with Next.js, Supabase, CrewAI Flows, and OpenAI Responses.
+A local content operations workbench: **PRD → researcher → writer → fact-checker → style polisher**. Built with Next.js, Supabase, CrewAI Flows, and a choice of OpenAI or Gemini.
 
 ## Start the credential-free demo
 
@@ -15,8 +15,8 @@ Open **http://127.0.0.1:3000**. Or run `./scripts/start-app.ps1` from PowerShell
 
 ## Enable live runs
 
-1. Create a Supabase project. In its SQL editor, execute `supabase/migrations/001_contentops.sql` **once**, as the database owner. It enables `pgmq`, creates the `content_runs` queue and private `prds` bucket, and applies the application schema, RPC grants, and ownership policies. Start with a new project; the migration is intentionally not a repeated reset script.
-2. Copy `.env.example` to `.env.local` at the repository root. Fill in `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `OPENAI_API_KEY`. Get the Supabase keys from Project Settings → API. Never place service-role or OpenAI keys in `NEXT_PUBLIC_*` variables or commit `.env.local`.
+1. Create a Supabase project. In its SQL editor, execute `supabase/migrations/001_contentops.sql`, then `supabase/migrations/002_ai_providers.sql` **once**, as the database owner. They enable `pgmq`, create the `content_runs` queue and private `prds` bucket, and apply the application schema, RPC grants, provider choice, and ownership policies. For an existing installation, apply only migrations you have not already run.
+2. Copy `.env.example` to `.env.local` at the repository root. Fill in `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and at least one of `OPENAI_API_KEY` or `GEMINI_API_KEY`. Get the Supabase keys from Project Settings → API. Never place service-role or provider keys in `NEXT_PUBLIC_*` variables or commit `.env.local`.
 3. In Supabase Auth, enable email/password. Set Site URL to `http://127.0.0.1:3000` and add it to allowed redirect URLs. If email confirmation is enabled, confirm the signup email before signing in. Email delivery uses your Supabase project's mail settings.
 4. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and Python 3.12. The installed Python 3.14 is not supported by this worker; `uv python install 3.12` installs a separate interpreter without replacing it.
 5. Start the worker in a second terminal:
@@ -35,12 +35,19 @@ uv --cache-dir ../.uv-cache run --frozen python -m contentops.main
 
 6. Restart the Next.js development server after setting environment variables. Switch to **Live**, create an account, sign in, and create an article. The queued run starts when the worker is listening; the browser polls every two seconds until the run completes, fails, or needs review. Refreshing does not interrupt the worker; the selected live run ID is saved locally.
 
-Model IDs default to `gpt-5.4` and can be changed per role in `.env.local`. Your OpenAI project needs access to the selected models and Responses API web search. Provider calls are billable. Token counts come from returned usage; cost is marked unavailable unless all three optional pricing variables are supplied. Configure prices for the selected models and hosted web search; the simple cost estimate uses one rate schedule and is not an invoice or cached-token billing reconciliation.
+Choose **OpenAI** or **Gemini** in **New article → AI provider**. Only providers with server API keys are available in Live mode. The choice is saved in the run and used for all four roles and web research, including after worker restarts. Existing runs without a provider use OpenAI. Changing the choice affects new runs only; there is no automatic fallback to another provider.
+
+OpenAI defaults to `gpt-5.4` and Gemini to `gemini-2.5-flash`. Override each role with `OPENAI_MODEL_*` or `GEMINI_MODEL_*` in `.env.local`. Gemini uses the native generateContent API with structured JSON and Google Search grounding; it does not call OpenAI. Configure the same provider keys on both the Next.js server and worker, then restart both.
+
+Gemini has a [free tier](https://ai.google.dev/gemini-api/docs/pricing) for eligible models/accounts, subject to quotas and Google's data terms. Choosing Gemini does not guarantee free usage: your account, model, search usage, and billing tier determine charges. OpenAI calls are billable. Token counts come from returned usage (Gemini output includes thinking tokens). Cost remains unavailable unless all three optional pricing variables for the selected provider are supplied. Set zero rates only when applicable; estimates use one rate schedule per provider and are not invoices.
+
+For an existing database, apply `supabase/migrations/002_ai_providers.sql` before creating new runs. This changes the run-creation RPC without rewriting old runs.
+
 
 ## Workflow and evidence policy
 
 - PRD inputs: pasted text, UTF-8 TXT/Markdown, selectable-text PDF, or DOCX including tables. Upload cap: 10 MB. PDFs with passwords, image-only PDFs, corrupt files, decompressed DOCX over 50 MB, PDFs over 300 pages, and extracted text over 200,000 characters produce actionable failures. OCR is outside v1.
-- The researcher extracts product facts and generates at most three general public-context queries. Full PRDs are sent to OpenAI for processing, but are not deliberately submitted as web-search queries. Search-query minimization is prompt-guided, not a formal data-loss-prevention guarantee.
+- The researcher extracts product facts and generates at most three general public-context queries. Full PRDs are sent to the selected AI provider for processing, but are not deliberately submitted as web-search queries. Search-query minimization is prompt-guided, not a formal data-loss-prevention guarantee.
 - Every source records its ID, title, URL, evidence text, and retrieval time. Web evidence text is the actual returned search synthesis, explicitly labeled **not a verbatim page quotation**. URL metadata is copied from provider tool results, never accepted from model-authored source records. No arbitrary page fetcher is exposed.
 - The writer uses product facts and linked research. The fact-checker independently evaluates all factual assertions and corroborates public references with web search. Claim verdicts are `supported`, `contradicted`, or `insufficient_evidence`.
 - All factual claims require known, nonempty source references; every dimension must reach 85. Displayed quality is 40% accuracy, 35% evidence coverage, 25% PRD fidelity. Scores and claim enumeration are model assessments, with evidence available for human inspection.

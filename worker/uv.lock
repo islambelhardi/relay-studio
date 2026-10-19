@@ -1951,6 +1951,7 @@ version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "crewai" },
+    { name = "httpx" },
     { name = "openai" },
     { name = "pydantic" },
     { name = "pypdf" },
@@ -1968,6 +1969,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "crewai", specifier = ">=1.0,<2" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "openai", specifier = ">=2.0,<3" },
     { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "pypdf", specifier = ">=6.0,<7" },

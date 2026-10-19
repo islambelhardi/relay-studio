@@ -14,7 +14,7 @@ class ContentFlow(Flow[dict]):
         self.db, self.store = db, persistence
         self.initial = deepcopy(state)
         self.lease_valid = lease_valid
-        self.runner = runner or AgentRunner()
+        self.runner = runner or AgentRunner(provider=state.get("provider", "openai"))
 
     @start()
     def restore_checkpoint(self):
